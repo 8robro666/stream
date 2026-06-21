@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Live Streams</title>
+    <script src="https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 30px 20px;
+            background-color: #ffd43f;
+            background-image: radial-gradient(#ffe175 20%, transparent 20%),
+                              radial-gradient(#ffe175 20%, transparent 20%);
+            background-size: 40px 40px;
+            background-position: 0 0, 20px 20px;
+            color: #4a4a4a;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: bold;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ffffff;
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow:  3px  3px 0px #cda200,
+                         -1px -1px 0px #cda200,  
+                          1px -1px 0px #cda200,
+                         -1px  1px 0px #cda200,
+                          1px  1px 0px #cda200;
+        }
+
+        .controls {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .btn-refresh {
+            background-color: #ff6b81;
+            color: #ffffff;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: bold;
+            font-size: 16px;
+            text-transform: uppercase;
+            border: 4px solid #4a4a4a;
+            border-radius: 20px;
+            padding: 12px 30px;
+            cursor: pointer;
+            box-shadow: 0px 6px 0px #4a4a4a;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        .btn-refresh:active {
+            transform: translateY(4px);
+            box-shadow: 0px 2px 0px #4a4a4a;
+        }
+
+        .stream-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+        }
+
+        .device-card {
+            background-color: #ffffff;
+            border: 6px solid #4a4a4a;
+            border-radius: 24px;
+            padding: 20px;
+            text-align: center;
+            width: 360px;
+            box-shadow: 0px 10px 0px rgba(0, 0, 0, 0.15);
+            position: relative;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            order: 1;
+        }
+
+        .device-card h3 {
+            margin-top: 0;
+            color: #ffffff;
+            border: 4px solid #4a4a4a;
+            border-radius: 16px;
+            padding: 10px;
+            font-size: 20px;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 0px rgba(0,0,0,0.2);
+            box-shadow: 0px 4px 0px #4a4a4a;
+        }
+
+        /* Neocities forced specific ordering rules */
+        .device-card.offline {
+            order: 999 !important; 
+        }
+
+        .device-card.offline h3 {
+            background-color: #ff6b81 !important; /* Standout pink header button */
+        }
+
+        .coming-soon-banner {
+            width: 100%;
+            height: 480px;
+            background-color: #ffb6c1 !important; /* Solid Light Pink background */
+            border: 5px solid #4a4a4a;
+            border-radius: 18px;
+            background-image: url('comingsoon.png'); /* Renamed for absolute safety on Neocities servers */
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            box-shadow: inset 0px 4px 10px rgba(0,0,0,0.15);
+        }
+
+        video {
+            width: 100%;
+            height: 540px;
+            background-color: #2b2b2b;
+            border: 5px solid #4a4a4a;
+            border-radius: 18px;
+            display: block;
+            box-shadow: inset 0px 4px 10px rgba(0,0,0,0.5);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.7); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Device Live Streams</h1>
+    
+    <div class="controls">
+        <button class="btn-refresh" id="refreshBtn">Refresh Streams</button>
+    </div>
+
+    <div class="stream-container" id="mainContainer"></div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const container = document.getElementById("mainContainer");
+            const refreshBtn = document.getElementById("refreshBtn");
+            
+            const baseHost = "stream.tomiimo.online";
+
+            const deviceNames = {
+                1: "Moto G3",
+                2: "Samsung",
+                3: "NT-C03"
+            };
+
+            const colors = ["#9cd622", "#ff6b81", "#35a7ff", "#b57cff", "#ff9f43"];
+
+            const analyzeCanvas = document.createElement('canvas');
+            const analyzeCtx = analyzeCanvas.getContext('2d', { willReadFrequently: true });
+            analyzeCanvas.width = 10; 
+            analyzeCanvas.height = 10;
+
+            let activeDestructors = [];
+
+            function isStreamInvalid(videoElement) {
+                try {
+                    if (!videoElement || videoElement.videoWidth === 0) return true;
+                    analyzeCtx.drawImage(videoElement, 0, 0, 10, 10);
+                    const frame = analyzeCtx.getImageData(0, 0, 10, 10).data;
+                    
+                    let r = frame[0], g = frame[1], b = frame[2];
+                    let isSolidColor = true;
+
+                    for (let i = 0; i < frame.length; i += 4) {
+                        if (Math.abs(frame[i] - r) > 8 || Math.abs(frame[i+1] - g) > 8 || Math.abs(frame[i+2] - b) > 8) {
+                            isSolidColor = false;
+                            break;
+                        }
+                    }
+                    return isSolidColor;
+                } catch (e) {
+                    return false; 
+                }
+            }
+
+            function killAllStreams() {
+                activeDestructors.forEach(destroy => destroy());
+                activeDestructors = [];
+                container.innerHTML = "";
+            }
+
+            function startScanningGrid() {
+                killAllStreams();
+
+                // Scan channels 1 through 20 (Skipping 4)
+                for (let ch = 1; ch <= 20; ch++) {
+                    if (ch !== 4) {
+                        initDeviceStream(ch);
+                    }
+                }
+
+                // Append the placeholder card setup
+                createComingSoonCard();
+            }
+
+            function createComingSoonCard() {
+                const cardEl = document.createElement("div");
+                cardEl.className = "device-card offline";
+
+                const h3 = document.createElement("h3");
+                h3.textContent = "iPhone 6S";
+
+                const banner = document.createElement("div");
+                banner.className = "coming-soon-banner";
+
+                cardEl.appendChild(h3);
+                cardEl.appendChild(banner);
+                container.appendChild(cardEl);
+            }
+
+            function initDeviceStream(channelId) {
+                let ws, jmuxer, monitorInterval;
+                let cardEl = null, videoEl = null;
+                let consecutiveInvalidFrames = 0;
+                let hasSelfDestructed = false;
+
+                const connectionUrl = `wss://${baseHost}/ws/${channelId}`;
+
+                try {
+                    ws = new WebSocket(connectionUrl);
+                    ws.binaryType = "arraybuffer";
+                } catch (e) {
+                    return;
+                }
+
+                ws.onopen = () => {
+                    if (hasSelfDestructed) return;
+                    createCardUI();
+                    
+                    jmuxer = new JMuxer({
+                        node: videoEl,
+                        mode: 'video', 
+                        flushingTime: 0,
+                        clearBuffer: true,
+                        onError: function() { selfDestruct(); }
+                    });
+
+                    monitorInterval = setInterval(() => {
+                        if (isStreamInvalid(videoEl)) {
+                            consecutiveInvalidFrames++;
+                            if (consecutiveInvalidFrames >= 3) selfDestruct();
+                        } else {
+                            consecutiveInvalidFrames = 0;
+                        }
+                    }, 1000);
+                };
+
+                ws.onmessage = (event) => {
+                    if (event.data instanceof ArrayBuffer && jmuxer) {
+                        jmuxer.feed({ video: new Uint8Array(event.data) });
+                    }
+                };
+
+                ws.onclose = () => { selfDestruct(); };
+                ws.onerror = () => { selfDestruct(); };
+
+                function createCardUI() {
+                    cardEl = document.createElement("div");
+                    cardEl.className = "device-card";
+                    cardEl.id = `card-ch-${channelId}`;
+
+                    const titleText = deviceNames[channelId] || `Device ${channelId}`;
+                    const h3 = document.createElement("h3");
+                    h3.textContent = titleText;
+                    h3.style.backgroundColor = colors[channelId % colors.length];
+
+                    videoEl = document.createElement("video");
+                    videoEl.autoplay = true;
+                    videoEl.muted = true;
+                    videoEl.playsInline = true;
+
+                    cardEl.appendChild(h3);
+                    cardEl.appendChild(videoEl);
+                    container.appendChild(cardEl);
+                }
+
+                function selfDestruct() {
+                    if (hasSelfDestructed) return;
+                    hasSelfDestructed = true;
+
+                    clearInterval(monitorInterval);
+                    if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; }
+                    if (jmuxer) { try { jmuxer.destroy(); } catch(e){} jmuxer = null; }
+                    if (cardEl && cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
+                    cardEl = null; videoEl = null;
+                }
+
+                activeDestructors.push(selfDestruct);
+            }
+
+            startScanningGrid();
+            refreshBtn.addEventListener("click", startScanningGrid);
+        });
+    </script>
+</body>
+</html>
